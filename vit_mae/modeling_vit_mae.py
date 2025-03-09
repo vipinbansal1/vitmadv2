@@ -1104,11 +1104,14 @@ class ViTMAEForPreTraining(ViTMAEPreTrainedModel):
         Returns:
             `torch.FloatTensor`: Pixel reconstruction loss.
         """
-        target = self.patchify(pixel_values, interpolate_pos_encoding=interpolate_pos_encoding)
-        if self.config.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.0e-6) ** 0.5
+        try:
+            if self.config.norm_pix_loss:
+                mean = pixel_values.mean(dim=(2,3), keepdim=True)
+                var = pixel_values.var(dim=(2,3), keepdim=True)
+                pixel_values = (pixel_values - mean) / (var + 1.0e-6) ** 0.5
+            target = self.patchify(pixel_values, interpolate_pos_encoding=interpolate_pos_encoding)
+        except Exception as e:
+            print(e)
 
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
