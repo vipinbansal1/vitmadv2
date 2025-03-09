@@ -43,7 +43,7 @@ from transformers.utils.versions import require_version
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.50.0.dev0")
+check_min_version("4.42.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/image-pretraining/requirements.txt")
 
@@ -62,16 +62,6 @@ class DataTrainingArguments:
     )
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
-    )
-    trust_remote_code: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether to trust the execution of code from datasets/models defined on the Hub."
-                " This option should only be set to `True` for repositories you trust and in which you have read the"
-                " code, as it will execute code present on the Hub on your local machine."
-            )
-        },
     )
     image_column_name: Optional[str] = field(
         default=None, metadata={"help": "The column name of the images in the files."}
@@ -171,6 +161,13 @@ def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     return {"pixel_values": pixel_values}
 
+def custom_normalization(image_pixels):
+    mean = image_pixels[0].mean(dim=(1,2),keepdims = True)
+    std = image_pixels[0].std(dim=(1,2), keepdims = True)
+    #image_pixels normalization
+    image_pixels[0] = (image_pixels[0] - mean) / (std + 1.0e-6) ** 0.5
+    return image_pixels
+
 
 def main():
     # See all possible arguments in src/transformers/training_args.py
@@ -235,7 +232,6 @@ def main():
         data_files=data_args.data_files,
         cache_dir=model_args.cache_dir,
         token=model_args.token,
-        trust_remote_code=data_args.trust_remote_code,
     )
 
     # If we don't have a validation split, split off a percentage of train as validation.
@@ -323,14 +319,13 @@ def main():
             RandomResizedCrop(size, scale=(0.2, 1.0), interpolation=InterpolationMode.BICUBIC),
             RandomHorizontalFlip(),
             ToTensor(),
-            Normalize(mean=image_processor.image_mean, std=image_processor.image_std),
         ]
     )
 
     def preprocess_images(examples):
         """Preprocess a batch of images by applying transforms."""
-
-        examples["pixel_values"] = [transforms(image) for image in examples[image_column_name]]
+        unnormalized_pixels = [transforms(image) for image in examples[image_column_name]]
+        examples["pixel_values"] = custom_normalization(unnormalized_pixels)
         return examples
 
     if training_args.do_train:
@@ -364,7 +359,7 @@ def main():
         args=training_args,
         train_dataset=ds["train"] if training_args.do_train else None,
         eval_dataset=ds["validation"] if training_args.do_eval else None,
-        processing_class=image_processor,
+        tokenizer=image_processor,
         data_collator=collate_fn,
     )
 
