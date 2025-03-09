@@ -50,8 +50,8 @@ class SiameseNetwork(nn.Module):
         output1 = self.forward_once(input1)
         output2 = self.forward_once(input2)
 
-        # concatenate both images' features
-        output = torch.cat((output1, output2), 1)
+        diff = output1-output2
+        output = (diff*diff)/(output1+output2)
 
         # pass the concatenation to the linear layers
         output = self.fc(output)
